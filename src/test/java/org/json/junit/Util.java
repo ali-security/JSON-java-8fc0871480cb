@@ -117,4 +117,49 @@ public class Util {
             );
         }
     }
+
+    /**
+     * Runs the task on a dedicated thread with an 8 MB stack and returns what it
+     * threw. The tests run with a small thread stack, and descending to the default
+     * maximum nesting depth of the XML parsers needs more than that, so tests that
+     * exercise the default limit run here to observe the limit rather than a
+     * StackOverflowError.
+     * @param task the code to run
+     * @return the Throwable thrown by the task, or null if it completed normally
+     */
+    public static Throwable runWithLargeStack(final Runnable task) {
+        final Throwable[] thrown = new Throwable[1];
+        Thread worker = new Thread(null, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    thrown[0] = t;
+                }
+            }
+        }, "large-stack-test", 8L * 1024 * 1024);
+        worker.start();
+        try {
+            worker.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for the large-stack test thread", e);
+        }
+        return thrown[0];
+    }
+
+    /**
+     * Asserts that the throwable is the JSONException a parser raises when the
+     * given maximum nesting depth is reached.
+     * @param thrown the Throwable to check
+     * @param maxNestingDepth the expected maximum nesting depth
+     */
+    public static void assertMaxNestingDepthReached(Throwable thrown, int maxNestingDepth) {
+        assertNotNull("Expecting a JSONException", thrown);
+        assertTrue("Wrong throwable thrown: expecting a JSONException but got <" + thrown + ">",
+            thrown instanceof JSONException);
+        assertTrue("Wrong throwable thrown: not expecting message <" + thrown.getMessage() + ">",
+            thrown.getMessage().startsWith("Maximum nesting depth of " + maxNestingDepth));
+    }
 }
